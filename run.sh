@@ -8,7 +8,7 @@
 # then run the project by ./run.sh
 
 echo "Compiling the C++ program..."
-g++ main.cpp -o student_grades
+g++ -std=c++11 main.cpp Person.cpp FileGenerator.cpp Utilities.cpp -o student_grades
 
 if [ $? -eq 0 ]; then
     echo "Compilation successful. Running the program..."
