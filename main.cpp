@@ -1,85 +1,66 @@
+#include "Person.h"
+#include "FileGenerator.h"
+#include "Utilities.h"
 #include <iostream>
-#include <vector>
-#include <string>
-#include <algorithm>
 #include <fstream>
+#include <vector>
+#include <algorithm>
+#include <chrono>
 #include <sstream>
-#include <iomanip>
-#include <ctime>
-#include <cstdlib>
 
-class Person {
-public:
-    std::string firstName;
-    std::string lastName;
-    std::vector<float> homeworkResults;
-    float examResult;
-    float finalGradeAvg;
-    float finalGradeMed;
+std::vector<Person> readFromFile(const std::string& filename);
+void processStudents(std::vector<Person>& students);
 
-    Person() : finalGradeAvg(0.0f), finalGradeMed(0.0f), examResult(0.0f) {}
+int main() {
+    try {
+        // Generate test files
+        FileGenerator::generateStudentFile("students_10000.txt", 10000);
+        FileGenerator::generateStudentFile("students_100000.txt", 100000);
+        FileGenerator::generateStudentFile("students_1000000.txt", 1000000);
+        FileGenerator::generateStudentFile("students_10000000.txt", 10000000);
 
-    void calculateFinalGrades() {
-        finalGradeAvg = (calculateAverage(homeworkResults) + examResult) / 2;
-        finalGradeMed = (calculateMedian(homeworkResults) + examResult) / 2;
+        std::string filename = "students_10000.txt";
+        auto students = readFromFile(filename);
+
+        processStudents(students);
+
+    } catch (const std::exception& e) {
+        std::cerr << "An error occurred: " << e.what() << std::endl;
+        return 1;
     }
 
-    float calculateAverage(const std::vector<float>& scores) {
-        float sum = 0;
-        for (float score : scores) {
-            sum += score;
-        }
-        return scores.empty() ? 0 : sum / scores.size();
-    }
-
-    float calculateMedian(std::vector<float> scores) {
-        std::sort(scores.begin(), scores.end());
-        if (scores.size() % 2 == 0) {
-            return (scores[scores.size() / 2 - 1] + scores[scores.size() / 2]) / 2;
-        } else {
-            return scores[scores.size() / 2];
-        }
-    }
-
-
-    void print() const {
-        std::cout << std::setw(10) << firstName << " "
-                  << std::setw(10) << lastName << " "
-                  << std::setw(10) << std::fixed << std::setprecision(2) << finalGradeAvg << " | "
-                  << std::setw(10) << finalGradeMed << std::endl;
-    }
-};
+    return 0;
+}
 
 std::vector<Person> readFromFile(const std::string& filename) {
     std::vector<Person> students;
     std::ifstream file(filename);
 
     if (!file.is_open()) {
-        std::cerr << "Error: Could not open file " << filename << std::endl;
-        return students;  
+        throw std::runtime_error("Could not open file " + filename);
     }
 
     std::string line;
-    std::getline(file, line); 
     while (std::getline(file, line)) {
-        std::stringstream ss(line);
         Person p;
-
-        std::cout << "Reading line: " << line << std::endl;
-
+        std::istringstream ss(line);
         ss >> p.firstName >> p.lastName;
 
-        std::cout << "First name: " << p.firstName << ", Last name: " << p.lastName << std::endl;
-
+        // Read homework scores
         float hw;
         while (ss >> hw) {
             p.homeworkResults.push_back(hw);
         }
 
-        if (!(ss >> p.examResult)) {
-            std::cerr << "Error: Could not read exam result for " << p.firstName << " " << p.lastName << std::endl;
+        // Check if there are any homework scores, and if so, pop the last one as the exam result
+        if (!p.homeworkResults.empty()) {
+            p.examResult = p.homeworkResults.back();
+            p.homeworkResults.pop_back(); // Remove the last item from homework, which was the exam
+        } else {
+            throw std::runtime_error("Error reading exam result for " + p.firstName + " " + p.lastName);
         }
 
+        // Calculate grades
         p.calculateFinalGrades();
         students.push_back(p);
     }
@@ -87,29 +68,37 @@ std::vector<Person> readFromFile(const std::string& filename) {
     return students;
 }
 
-bool compareByName(const Person& a, const Person& b) {
-    return a.lastName < b.lastName;
-}
+void processStudents(std::vector<Person>& students) {
+    std::vector<Person> passed, failed;
 
-int main() {
-    srand(time(0));  
-
-    std::string filename = "students.txt";
-    std::vector<Person> students = readFromFile(filename);
-
-    if (students.empty()) {
-        std::cerr << "No students found. Exiting..." << std::endl;
-        return 1;
+    for (const auto& student : students) {
+        if (student.finalGradeAvg >= 5.0) {
+            passed.push_back(student);
+        } else {
+            failed.push_back(student);
+        }
     }
 
-    std::sort(students.begin(), students.end(), compareByName);
+    // Sort both lists
+    std::sort(passed.begin(), passed.end(), [](const Person& a, const Person& b) {
+        return a.lastName < b.lastName;
+    });
 
-    std::cout << "Name       Surname        Final (Avg.) | Final (Med.)" << std::endl;
-    std::cout << "-----------------------------------------------" << std::endl;
+    std::sort(failed.begin(), failed.end(), [](const Person& a, const Person& b) {
+        return a.lastName < b.lastName;
+    });
 
-    for (const Person& student : students) {
-        student.print();
+
+    // Write to files
+    std::ofstream passedFile("passed_students.txt");
+    for (const auto& student : passed) {
+        passedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
     }
+    passedFile.close();
 
-    return 0;
+    std::ofstream failedFile("failed_students.txt");
+    for (const auto& student : failed) {
+        failedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
+    }
+    failedFile.close();
 }
