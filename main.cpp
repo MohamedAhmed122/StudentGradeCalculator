@@ -4,12 +4,23 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <list>
+#include <deque>
 #include <algorithm>
 #include <chrono>
 #include <sstream>
+#include <type_traits>
 
-std::vector<Person> readFromFile(const std::string& filename);
-void processStudents(std::vector<Person>& students);
+template <typename Container>
+Container readFromFile(const std::string& filename);
+
+template <typename Container>
+void processStudents(Container& students);
+
+template <typename Container>
+double measureOperationTime(const std::string& operationName, void(*operation)(Container&), Container& students);
+
+void analyzePerformance();
 
 int main() {
     try {
@@ -19,10 +30,7 @@ int main() {
         FileGenerator::generateStudentFile("students_1000000.txt", 1000000);
         FileGenerator::generateStudentFile("students_10000000.txt", 10000000);
 
-        std::string filename = "students_10000.txt";
-        auto students = readFromFile(filename);
-
-        processStudents(students);
+        analyzePerformance();
 
     } catch (const std::exception& e) {
         std::cerr << "An error occurred: " << e.what() << std::endl;
@@ -32,8 +40,9 @@ int main() {
     return 0;
 }
 
-std::vector<Person> readFromFile(const std::string& filename) {
-    std::vector<Person> students;
+template <typename Container>
+Container readFromFile(const std::string& filename) {
+    Container students;
     std::ifstream file(filename);
 
     if (!file.is_open()) {
@@ -46,21 +55,18 @@ std::vector<Person> readFromFile(const std::string& filename) {
         std::istringstream ss(line);
         ss >> p.firstName >> p.lastName;
 
-        // Read homework scores
         float hw;
         while (ss >> hw) {
             p.homeworkResults.push_back(hw);
         }
 
-        // Check if there are any homework scores, and if so, pop the last one as the exam result
         if (!p.homeworkResults.empty()) {
             p.examResult = p.homeworkResults.back();
-            p.homeworkResults.pop_back(); // Remove the last item from homework, which was the exam
+            p.homeworkResults.pop_back();
         } else {
             throw std::runtime_error("Error reading exam result for " + p.firstName + " " + p.lastName);
         }
 
-        // Calculate grades
         p.calculateFinalGrades();
         students.push_back(p);
     }
@@ -68,8 +74,10 @@ std::vector<Person> readFromFile(const std::string& filename) {
     return students;
 }
 
-void processStudents(std::vector<Person>& students) {
-    std::vector<Person> passed, failed;
+// function to process students, divide into passed/failed and sort
+template <typename Container>
+void processStudents(Container& students) {
+    Container passed, failed;
 
     for (const auto& student : students) {
         if (student.finalGradeAvg >= 5.0) {
@@ -79,17 +87,26 @@ void processStudents(std::vector<Person>& students) {
         }
     }
 
-    // Sort both lists
-    std::sort(passed.begin(), passed.end(), [](const Person& a, const Person& b) {
-        return a.lastName < b.lastName;
-    });
+    // Sorting
+    if constexpr (std::is_same<Container, std::list<Person>>::value) {
+        // Use list's own sort method for std::list
+        passed.sort([](const Person& a, const Person& b) {
+            return a.lastName < b.lastName;
+        });
+        failed.sort([](const Person& a, const Person& b) {
+            return a.lastName < b.lastName;
+        });
+    } else {
+        // Use std::sort for std::vector and std::deque
+        std::sort(passed.begin(), passed.end(), [](const Person& a, const Person& b) {
+            return a.lastName < b.lastName;
+        });
+        std::sort(failed.begin(), failed.end(), [](const Person& a, const Person& b) {
+            return a.lastName < b.lastName;
+        });
+    }
 
-    std::sort(failed.begin(), failed.end(), [](const Person& a, const Person& b) {
-        return a.lastName < b.lastName;
-    });
-
-
-    // Write to files
+    // Write sorted students to files
     std::ofstream passedFile("passed_students.txt");
     for (const auto& student : passed) {
         passedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
@@ -101,4 +118,35 @@ void processStudents(std::vector<Person>& students) {
         failedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
     }
     failedFile.close();
+}
+
+//  function to measure operation time
+template <typename Container>
+double measureOperationTime(const std::string& operationName, void(*operation)(Container&), Container& students) {
+    auto start = std::chrono::high_resolution_clock::now();
+    operation(students);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << operationName << " took " << duration.count() << " seconds" << std::endl;
+    return duration.count();
+}
+
+// Function to analyze performance for vector, list, and deque
+void analyzePerformance() {
+    const std::string filename = "students_10000.txt"; // Change this for other file sizes as needed
+
+    // Vector
+    std::vector<Person> vectorStudents = readFromFile<std::vector<Person>>(filename);
+    std::cout << "\nPerformance with std::vector:" << std::endl;
+    measureOperationTime("Process students with vector", processStudents<std::vector<Person>>, vectorStudents);
+
+    // List
+    std::list<Person> listStudents = readFromFile<std::list<Person>>(filename);
+    std::cout << "\nPerformance with std::list:" << std::endl;
+    measureOperationTime("Process students with list", processStudents<std::list<Person>>, listStudents);
+
+    // Deque
+    std::deque<Person> dequeStudents = readFromFile<std::deque<Person>>(filename);
+    std::cout << "\nPerformance with std::deque:" << std::endl;
+    measureOperationTime("Process students with deque", processStudents<std::deque<Person>>, dequeStudents);
 }
