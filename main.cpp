@@ -15,10 +15,23 @@ template <typename Container>
 Container readFromFile(const std::string& filename);
 
 template <typename Container>
-void processStudents(Container& students);
+void processStudentsStrategy1(Container& students);
+
+template <typename Container>
+void processStudentsStrategy2(Container& students);
 
 template <typename Container>
 double measureOperationTime(const std::string& operationName, void(*operation)(Container&), Container& students);
+
+template <typename Container>
+double measureOperationTime(const std::string& operationName, void(*operation)(Container&), Container& students) {
+    auto start = std::chrono::high_resolution_clock::now();
+    operation(students);
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << operationName << " took " << duration.count() << " seconds" << std::endl;
+    return duration.count();
+}
 
 void analyzePerformance();
 
@@ -74,39 +87,16 @@ Container readFromFile(const std::string& filename) {
     return students;
 }
 
-// function to process students, divide into passed/failed and sort
+// Strategy 1: Two new containers for passed and failed students
 template <typename Container>
-void processStudents(Container& students) {
+void processStudentsStrategy1(Container& students) {
     Container passed, failed;
 
-    for (const auto& student : students) {
-        if (student.finalGradeAvg >= 5.0) {
-            passed.push_back(student);
-        } else {
-            failed.push_back(student);
-        }
-    }
+    std::partition_copy(
+        students.begin(), students.end(),
+        std::back_inserter(passed), std::back_inserter(failed),
+        [](const Person& student) { return student.finalGradeAvg >= 5.0; });
 
-    // Sorting
-    if constexpr (std::is_same<Container, std::list<Person>>::value) {
-        // Use list's own sort method for std::list
-        passed.sort([](const Person& a, const Person& b) {
-            return a.lastName < b.lastName;
-        });
-        failed.sort([](const Person& a, const Person& b) {
-            return a.lastName < b.lastName;
-        });
-    } else {
-        // Use std::sort for std::vector and std::deque
-        std::sort(passed.begin(), passed.end(), [](const Person& a, const Person& b) {
-            return a.lastName < b.lastName;
-        });
-        std::sort(failed.begin(), failed.end(), [](const Person& a, const Person& b) {
-            return a.lastName < b.lastName;
-        });
-    }
-
-    // Write sorted students to files
     std::ofstream passedFile("passed_students.txt");
     for (const auto& student : passed) {
         passedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
@@ -120,33 +110,55 @@ void processStudents(Container& students) {
     failedFile.close();
 }
 
-//  function to measure operation time
+// Strategy 2: In-place modification of students container
 template <typename Container>
-double measureOperationTime(const std::string& operationName, void(*operation)(Container&), Container& students) {
-    auto start = std::chrono::high_resolution_clock::now();
-    operation(students);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    std::cout << operationName << " took " << duration.count() << " seconds" << std::endl;
-    return duration.count();
+void processStudentsStrategy2(Container& students) {
+    auto partitionPoint = std::partition(
+        students.begin(), students.end(),
+        [](const Person& student) { return student.finalGradeAvg >= 5.0; });
+
+    Container failed(partitionPoint, students.end());
+    students.erase(partitionPoint, students.end());
+
+    std::ofstream passedFile("passed_students.txt");
+    for (const auto& student : students) {
+        passedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
+    }
+    passedFile.close();
+
+    std::ofstream failedFile("failed_students.txt");
+    for (const auto& student : failed) {
+        failedFile << student.firstName << " " << student.lastName << " " << student.finalGradeAvg << std::endl;
+    }
+    failedFile.close();
 }
 
-// Function to analyze performance for vector, list, and deque
+// Measure performance of each strategy
+template <typename Container>
+void measureStrategies(const std::string& filename) {
+    Container students = readFromFile<Container>(filename);
+
+    std::cout << "\nMeasuring Strategy 1 (Two New Containers) for " << typeid(Container).name() << ":" << std::endl;
+    measureOperationTime("Strategy 1", processStudentsStrategy1<Container>, students);
+
+    students = readFromFile<Container>(filename);
+
+    std::cout << "\nMeasuring Strategy 2 (In-Place Modification) for " << typeid(Container).name() << ":" << std::endl;
+    measureOperationTime("Strategy 2", processStudentsStrategy2<Container>, students);
+}
+
 void analyzePerformance() {
-    const std::string filename = "students_10000.txt"; // Change this for other file sizes as needed
+    const std::string filename = "students_10000.txt";
 
     // Vector
-    std::vector<Person> vectorStudents = readFromFile<std::vector<Person>>(filename);
     std::cout << "\nPerformance with std::vector:" << std::endl;
-    measureOperationTime("Process students with vector", processStudents<std::vector<Person>>, vectorStudents);
+    measureStrategies<std::vector<Person>>(filename);
 
     // List
-    std::list<Person> listStudents = readFromFile<std::list<Person>>(filename);
     std::cout << "\nPerformance with std::list:" << std::endl;
-    measureOperationTime("Process students with list", processStudents<std::list<Person>>, listStudents);
+    measureStrategies<std::list<Person>>(filename);
 
     // Deque
-    std::deque<Person> dequeStudents = readFromFile<std::deque<Person>>(filename);
     std::cout << "\nPerformance with std::deque:" << std::endl;
-    measureOperationTime("Process students with deque", processStudents<std::deque<Person>>, dequeStudents);
+    measureStrategies<std::deque<Person>>(filename);
 }
