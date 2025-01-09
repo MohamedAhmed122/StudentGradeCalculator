@@ -1,6 +1,7 @@
 #include "Person.h"
 
-Person::Person() : finalGradeAvg(0.0f), finalGradeMed(0.0f), examResult(0.0f) {}
+Person::Person() : examResult(0.0f), finalGradeAvg(0.0f), finalGradeMed(0.0f) {}
+
 
 void Person::calculateFinalGrades() {
     finalGradeAvg = (calculateAverage(homeworkResults) + examResult) / 2;
